@@ -8,7 +8,7 @@ import {
   ScoreboardTeam, ScoreHistory 
 } from '../types';
 
-const DB_DIR = path.join(process.cwd(), 'database');
+const DB_DIR = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'database');
 const DB_FILE = path.join(DB_DIR, 'app.db');
 const OLD_DB_FILE = path.join(process.cwd(), 'data', 'db.json');
 

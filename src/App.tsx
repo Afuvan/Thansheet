@@ -75,44 +75,74 @@ export default function App() {
     }
   };
 
+  // Helper for parsing JSON safely even if server returns HTML 404/500
+  const safeJsonParse = async (res: Response) => {
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return await res.json();
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      if (text.includes('The page could not be found') || text.includes('404')) {
+        throw new Error(`API endpoint not found (HTTP ${res.status}). Ensure Vercel serverless function rewrites are active.`);
+      }
+      throw new Error(`Server error (${res.status}): ${text.slice(0, 100)}`);
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Received invalid non-JSON response from server.');
+    }
+  };
+
   // Helper fetches
   const fetchEvents = async () => {
     const res = await fetch('/api/events');
-    const data = await res.json();
-    setEvents(data);
+    if (res.ok) {
+      const data = await safeJsonParse(res);
+      setEvents(data);
+    }
   };
 
   const fetchResults = async () => {
     const res = await fetch('/api/results');
-    const data = await res.json();
-    setResults(data.results || []);
+    if (res.ok) {
+      const data = await safeJsonParse(res);
+      setResults(data.results || []);
+    }
   };
 
   const fetchGallery = async () => {
     const res = await fetch('/api/gallery');
-    const data = await res.json();
-    setGallery(data);
+    if (res.ok) {
+      const data = await safeJsonParse(res);
+      setGallery(data);
+    }
   };
 
   const fetchAnnouncements = async () => {
     const res = await fetch('/api/announcements');
-    const data = await res.json();
-    setAnnouncements(data);
+    if (res.ok) {
+      const data = await safeJsonParse(res);
+      setAnnouncements(data);
+    }
   };
 
   const fetchScoreboard = async () => {
     const res = await fetch('/api/scoreboard');
-    const data = await res.json();
-    setScoreboard(data.scoreboard);
-    setIndividualRankings(data.individualRankings);
-    setRecentWinners(data.recentWinners);
+    if (res.ok) {
+      const data = await safeJsonParse(res);
+      setScoreboard(data.scoreboard || []);
+      setIndividualRankings(data.individualRankings || []);
+      setRecentWinners(data.recentWinners || []);
+    }
   };
 
   const fetchStudentProfile = async (userId: string) => {
     try {
       const res = await fetch(`/api/students/profile?userId=${userId}`);
       if (res.ok) {
-        const profile = await res.json();
+        const profile = await safeJsonParse(res);
         setStudentProfile(profile);
         
         // Fetch user-bound assets
@@ -132,7 +162,7 @@ export default function App() {
   const fetchNotifications = async (studentId: string) => {
     const res = await fetch(`/api/notifications?studentId=${studentId}`);
     if (res.ok) {
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       setNotifications(data);
     }
   };
@@ -140,7 +170,7 @@ export default function App() {
   const fetchCertificates = async (studentId: string) => {
     const res = await fetch(`/api/certificates?studentId=${studentId}`);
     if (res.ok) {
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       setCertificates(data);
     }
   };
@@ -148,7 +178,7 @@ export default function App() {
   const fetchRegistrations = async () => {
     const res = await fetch('/api/registrations');
     if (res.ok) {
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       setRegistrations(data);
     }
   };
@@ -163,11 +193,17 @@ export default function App() {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || err.error || 'Login failed');
+      let errorMessage = 'Login failed';
+      try {
+        const err = await safeJsonParse(res);
+        errorMessage = err.message || err.error || errorMessage;
+      } catch (parseErr: any) {
+        errorMessage = parseErr.message || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
-    const session = await res.json();
+    const session = await safeJsonParse(res);
     setCurrentUser(session.user);
     localStorage.setItem('user_session', JSON.stringify(session.user));
 
@@ -188,11 +224,17 @@ export default function App() {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || 'Registration failed');
+      let errorMessage = 'Registration failed';
+      try {
+        const err = await safeJsonParse(res);
+        errorMessage = err.message || err.error || errorMessage;
+      } catch (parseErr: any) {
+        errorMessage = parseErr.message || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
-    return await res.json();
+    return await safeJsonParse(res);
   };
 
   const handleLogout = () => {

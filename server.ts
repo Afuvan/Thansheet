@@ -1977,13 +1977,38 @@ const resetDbHandler = async (req: any, res: any) => {
 app.post('/api/admin/reset-db', resetDbHandler);
 app.post('/api/admin/reset', resetDbHandler);
 
+let isDbLoaded = false;
+let dbInitPromise: Promise<void> | null = null;
+
+export async function ensureDbLoaded() {
+  if (!isDbLoaded) {
+    if (!dbInitPromise) {
+      dbInitPromise = (async () => {
+        db = await loadDatabaseFromSQLite();
+        if (!db.assignedStudentIds) {
+          db.assignedStudentIds = db.students ? db.students.map(s => s.studentId).filter(Boolean) : [];
+        }
+        isDbLoaded = true;
+      })();
+    }
+    await dbInitPromise;
+  }
+}
+
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    try {
+      await ensureDbLoaded();
+    } catch (err) {
+      console.error('Error ensuring DB loaded:', err);
+    }
+  }
+  next();
+});
+
 // Vite & Static file handler setup
 async function startServer() {
-  // Load database from SQLite
-  db = await loadDatabaseFromSQLite();
-  if (!db.assignedStudentIds) {
-    db.assignedStudentIds = db.students ? db.students.map(s => s.studentId).filter(Boolean) : [];
-  }
+  await ensureDbLoaded();
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -2000,9 +2025,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  }
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;

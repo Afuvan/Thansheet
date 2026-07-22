@@ -1,0 +1,6 @@
+{
+  "name": "Darussalma Arts Fest",
+  "description": "Darussalma Academy Nandi Arts Fest 2026 with real-time scoreboards, live results, student registration flow, gallery lightbox, student command center, and admin festival management panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

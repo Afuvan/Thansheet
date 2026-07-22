@@ -1,4 +1,3 @@
-import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { 
@@ -12,16 +11,37 @@ const DB_DIR = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'database'
 const DB_FILE = path.join(DB_DIR, 'app.db');
 const OLD_DB_FILE = path.join(process.cwd(), 'data', 'db.json');
 
-if (!fs.existsSync(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true });
+let sqlite3Driver: any = null;
+let sqliteDbInstance: any = null;
+let isSqliteSupported = false;
+
+export function getSqliteDb() {
+  if (sqliteDbInstance) return sqliteDbInstance;
+  try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
+    sqlite3Driver = require('sqlite3');
+    sqliteDbInstance = new sqlite3Driver.Database(DB_FILE);
+    isSqliteSupported = true;
+    return sqliteDbInstance;
+  } catch (err) {
+    console.warn("SQLite native driver unavailable in this environment (e.g. Vercel Serverless). Using in-memory fallback.", err);
+    isSqliteSupported = false;
+    return null;
+  }
 }
 
-export const sqliteDb = new sqlite3.Database(DB_FILE);
+export const sqliteDb = getSqliteDb();
 
 // Promisified query wrappers
 export function runQuery(sql: string, params: any[] = []): Promise<any> {
+  const db = getSqliteDb();
+  if (!db || !isSqliteSupported) {
+    return Promise.resolve();
+  }
   return new Promise((resolve, reject) => {
-    sqliteDb.run(sql, params, function (err) {
+    db.run(sql, params, function (err: any) {
       if (err) reject(err);
       else resolve(this);
     });
@@ -29,8 +49,12 @@ export function runQuery(sql: string, params: any[] = []): Promise<any> {
 }
 
 export function getQuery(sql: string, params: any[] = []): Promise<any> {
+  const db = getSqliteDb();
+  if (!db || !isSqliteSupported) {
+    return Promise.resolve(null);
+  }
   return new Promise((resolve, reject) => {
-    sqliteDb.get(sql, params, (err, row) => {
+    db.get(sql, params, (err: any, row: any) => {
       if (err) reject(err);
       else resolve(row);
     });
@@ -38,10 +62,14 @@ export function getQuery(sql: string, params: any[] = []): Promise<any> {
 }
 
 export function allQuery(sql: string, params: any[] = []): Promise<any[]> {
+  const db = getSqliteDb();
+  if (!db || !isSqliteSupported) {
+    return Promise.resolve([]);
+  }
   return new Promise((resolve, reject) => {
-    sqliteDb.all(sql, params, (err, rows) => {
+    db.all(sql, params, (err: any, rows: any) => {
       if (err) reject(err);
-      else resolve(rows);
+      else resolve(rows || []);
     });
   });
 }
@@ -963,17 +991,29 @@ export async function resetSqliteToDefaultSeeds() {
 
 // Global hook to back up the entire SQLite binary file buffer into Cloud SQL (PostgreSQL)
 // This guarantees file persistence across ephemeral Cloud Run container rebuilds/restarts!
-import pg from 'pg';
-const sqlPool = new pg.Pool({
-  host: process.env.SQL_HOST,
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
-  database: process.env.SQL_DB_NAME,
-  connectionTimeoutMillis: 15000,
-});
+let sqlPool: any = null;
+function getPgPool() {
+  if (sqlPool) return sqlPool;
+  if (!process.env.SQL_HOST) return null;
+  try {
+    const pg = require('pg');
+    sqlPool = new pg.Pool({
+      host: process.env.SQL_HOST,
+      user: process.env.SQL_USER,
+      password: process.env.SQL_PASSWORD,
+      database: process.env.SQL_DB_NAME,
+      connectionTimeoutMillis: 15000,
+    });
+    return sqlPool;
+  } catch (err) {
+    console.error("Failed to initialize pg pool:", err);
+    return null;
+  }
+}
 
 export async function persistSqliteDbToCloudSQL() {
-  if (!process.env.SQL_HOST) {
+  const pool = getPgPool();
+  if (!pool || !process.env.SQL_HOST) {
     console.log("No Cloud SQL config detected. Skipping Cloud SQL binary synchronization.");
     return;
   }
@@ -982,7 +1022,7 @@ export async function persistSqliteDbToCloudSQL() {
     const dbBuffer = fs.readFileSync(DB_FILE);
     
     // Create backup table in Cloud SQL if it doesn't exist
-    await sqlPool.query(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS sqlite_backups (
         key VARCHAR(255) PRIMARY KEY,
         value BYTEA NOT NULL,
@@ -991,7 +1031,7 @@ export async function persistSqliteDbToCloudSQL() {
     `);
 
     // Insert binary buffer directly into Cloud SQL
-    await sqlPool.query(`
+    await pool.query(`
       INSERT INTO sqlite_backups (key, value, updated_at)
       VALUES ('sqlite_file', $1, CURRENT_TIMESTAMP)
       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
@@ -1004,13 +1044,14 @@ export async function persistSqliteDbToCloudSQL() {
 }
 
 export async function restoreSqliteDbFromCloudSQL() {
-  if (!process.env.SQL_HOST) {
+  const pool = getPgPool();
+  if (!pool || !process.env.SQL_HOST) {
     console.log("No Cloud SQL config detected. Skipping Cloud SQL recovery.");
     return;
   }
   try {
     // Create backup table in Cloud SQL if it doesn't exist
-    await sqlPool.query(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS sqlite_backups (
         key VARCHAR(255) PRIMARY KEY,
         value BYTEA NOT NULL,
@@ -1018,7 +1059,7 @@ export async function restoreSqliteDbFromCloudSQL() {
       )
     `);
 
-    const res = await sqlPool.query("SELECT value FROM sqlite_backups WHERE key = 'sqlite_file'");
+    const res = await pool.query("SELECT value FROM sqlite_backups WHERE key = 'sqlite_file'");
     if (res.rows.length > 0) {
       const dbBuffer = res.rows[0].value;
       fs.writeFileSync(DB_FILE, dbBuffer);

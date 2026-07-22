@@ -8,7 +8,6 @@ import {
   HouseScore, IndividualRanking, RecentWinnerFeedItem, WinnerDetail,
   ScoreboardTeam, ScoreHistory
 } from './src/types';
-import pg from 'pg';
 import {
   initializeSqlite, restoreSqliteDbFromCloudSQL, persistSqliteDbToCloudSQL,
   getDbUsers, saveDbUser,
@@ -31,14 +30,6 @@ import {
   getDbStatsOverrides, saveDbStatsOverrides,
   resetSqliteToDefaultSeeds, runQuery
 } from './src/db/sqlite-db';
-
-const sqlPool = new pg.Pool({
-  host: process.env.SQL_HOST,
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
-  database: process.env.SQL_DB_NAME,
-  connectionTimeoutMillis: 15000,
-});
 
 const app = express();
 const PORT = 3000;

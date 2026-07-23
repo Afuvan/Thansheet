@@ -8,7 +8,8 @@ import {
 // Standardize Supabase URL
 const rawUrl = process.env.SUPABASE_URL || 'phqyznpnyqxcgsrxbymk';
 const supabaseUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}.supabase.co`;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'ap-south-1';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBocXl6bnBueXF4Y2dzcnhieW1rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDc1MTgzNiwiZXhwIjoyMTAwMzI3ODM2fQ.PnIfRYY5Hqp_A6BP765MO_b-4A73RXJuXDleEQqj1zk';
+
 
 console.log(`[Supabase] Initializing client with URL: ${supabaseUrl}`);
 

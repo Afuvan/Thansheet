@@ -9,7 +9,7 @@ import {
   ScoreboardTeam, ScoreHistory
 } from './src/types';
 import {
-  initializeSqlite, restoreSqliteDbFromCloudSQL, persistSqliteDbToCloudSQL,
+  loadDatabaseFromSupabase, resetSupabaseToDefaultSeeds, checkSupabaseHealth,
   getDbUsers, saveDbUser,
   getDbStudents, saveDbStudent, deleteDbStudent,
   getDbEvents, saveDbEvent, deleteDbEvent,
@@ -27,9 +27,8 @@ import {
   getDbScoreboardTeams, saveDbScoreboardTeam, deleteDbScoreboardTeam,
   getDbScoreHistory, saveDbScoreHistoryItem, deleteDbScoreHistoryItem,
   getDbAssignedStudentIds, addDbAssignedStudentId, clearDbAssignedStudentIds,
-  getDbStatsOverrides, saveDbStatsOverrides,
-  resetSqliteToDefaultSeeds, runQuery
-} from './src/db/sqlite-db';
+  getDbStatsOverrides, saveDbStatsOverride
+} from './src/db/supabase-db';
 
 const app = express();
 const PORT = 3000;
@@ -268,71 +267,20 @@ let db: DatabaseSchema = {
 
 async function loadDatabaseFromSQLite(): Promise<DatabaseSchema> {
   try {
-    // First, restore SQLite DB binary from Cloud SQL backup if available
-    await restoreSqliteDbFromCloudSQL();
-
-    // Create SQLite tables, migrate from db.json if needed, or seed defaults
-    await initializeSqlite();
-
-    // Load all records directly using SQLite promise getters
-    const users = await getDbUsers();
-    const students = await getDbStudents();
-    const events = await getDbEvents();
-    const registrations = await getDbRegistrations();
-    const results = await getDbResults();
-    const teams = await getDbTeams();
-    const certificates = await getDbCertificates();
-    const notifications = await getDbNotifications();
-    const announcements = await getDbAnnouncements();
-    const gallery = await getDbGallery();
-    const scoreboard = await getDbScoreboard();
-    const individualRankings = await getDbIndividualRankings();
-    const recentWinners = await getDbRecentWinners();
-    const groups = await getDbGroups();
-    const scoreboardTeams = await getDbScoreboardTeams();
-    const scoreHistory = await getDbScoreHistory();
-    const assignedStudentIds = await getDbAssignedStudentIds();
-    const statsOverrides = await getDbStatsOverrides();
-
-    console.log("Successfully loaded database from SQLite!");
-    return {
-      users,
-      students,
-      events,
-      registrations,
-      results,
-      teams,
-      certificates,
-      notifications,
-      announcements,
-      gallery,
-      scoreboard,
-      individualRankings,
-      recentWinners,
-      groups,
-      scoreboardTeams,
-      scoreHistory,
-      assignedStudentIds,
-      statsOverrides
-    };
+    const loadedDb = await loadDatabaseFromSupabase();
+    console.log("Successfully loaded database from Supabase!");
+    return loadedDb;
   } catch (err) {
-    console.error("Failed to load SQLite database, falling back to default memory initialization:", err);
+    console.error("Failed to load Supabase database, falling back to default memory initialization:", err);
     return db;
   }
 }
 
 async function saveDatabase() {
   try {
-    console.log("Saving state to SQLite tables...");
+    console.log("Saving state to Supabase tables...");
 
     // Sync Users
-    const existingUsers = await getDbUsers();
-    const userIdsInState = new Set(db.users.map(u => u.id));
-    for (const eu of existingUsers) {
-      if (!userIdsInState.has(eu.id)) {
-        await runQuery("DELETE FROM users WHERE id = ?", [eu.id]);
-      }
-    }
     for (const u of db.users) {
       await saveDbUser(u);
     }
@@ -505,16 +453,9 @@ async function saveDatabase() {
       }
     }
 
-    // Sync Stats Overrides
-    if (db.statsOverrides) {
-      await saveDbStatsOverrides(db.statsOverrides);
-    }
-
-    // Persist local SQLite binary file buffer to Cloud SQL (PostgreSQL) as a backup/sync!
-    await persistSqliteDbToCloudSQL();
-    console.log("Database successfully persisted to SQLite and backed up to Cloud SQL!");
+    console.log("Database successfully persisted to Supabase!");
   } catch (err) {
-    console.error("Error saving database to SQLite:", err);
+    console.error("Error saving database to Supabase:", err);
   }
 }
 
@@ -1956,9 +1897,9 @@ app.get('/api/scoreboard/live', (req, res) => {
 // Admin-Only Reset Database for clean slate demo
 const resetDbHandler = async (req: any, res: any) => {
   try {
-    await resetSqliteToDefaultSeeds();
+    await resetSupabaseToDefaultSeeds();
     db = await loadDatabaseFromSQLite();
-    console.log("SQLite and memory database reset successfully.");
+    console.log("Supabase and memory database reset successfully.");
     res.json({ status: 'success', message: 'Database reset to default seed values' });
   } catch (err) {
     console.error("Failed to reset database:", err);
@@ -1967,6 +1908,21 @@ const resetDbHandler = async (req: any, res: any) => {
 };
 app.post('/api/admin/reset-db', resetDbHandler);
 app.post('/api/admin/reset', resetDbHandler);
+
+// Admin-Only Diagnostic Endpoint for Supabase Health & Telemetry
+app.get('/api/admin/supabase-status', async (req, res) => {
+  try {
+    const healthData = await checkSupabaseHealth();
+    res.json(healthData);
+  } catch (err: any) {
+    res.status(500).json({
+      connected: false,
+      status: 'Error',
+      error: err?.message || String(err),
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 let isDbLoaded = false;
 let dbInitPromise: Promise<void> | null = null;

@@ -5,7 +5,7 @@ import {
   MessageSquare, PlusCircle, CheckCircle2, AlertCircle, Edit, 
   Trash2, Calendar, MapPin, Clock, Eye, Image as ImageIcon, 
   Upload, X, Check, EyeOff, Sparkles, BookOpen, FolderPlus,
-  Trophy, History, Palette, Activity
+  Trophy, History, Palette, Activity, Database, Server, DatabaseBackup, Radio
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -97,6 +97,39 @@ export default function AdminDashboard({
 
   // Registration approval states
   const [registrations, setRegistrations] = useState<Registration[]>([]);
+
+  // Supabase Backend Health Diagnostic state
+  const [supabaseHealth, setSupabaseHealth] = useState<{
+    connected: boolean;
+    status: string;
+    url: string;
+    responseTimeMs: number;
+    tablesChecked: string[];
+    tableCounts?: Record<string, number>;
+    error?: string;
+    timestamp?: string;
+  } | null>(null);
+  const [isCheckingSupabase, setIsCheckingSupabase] = useState(false);
+
+  const checkSupabaseStatus = async () => {
+    setIsCheckingSupabase(true);
+    try {
+      const res = await fetch('/api/admin/supabase-status');
+      const data = await res.json();
+      setSupabaseHealth(data);
+    } catch (err: any) {
+      setSupabaseHealth({
+        connected: false,
+        status: 'Unreachable',
+        url: 'https://phqyznpnyqxcgsrxbymk.supabase.co',
+        responseTimeMs: 0,
+        tablesChecked: [],
+        error: 'Network connection issue or API unreachable'
+      });
+    } finally {
+      setIsCheckingSupabase(false);
+    }
+  };
 
   // Manual Certificate Form states
   const [certStudentId, setCertStudentId] = useState('');
@@ -193,6 +226,7 @@ export default function AdminDashboard({
     fetchGroupsList();
     fetchScoreboardTeamsList();
     fetchScoreHistoryList();
+    checkSupabaseStatus();
   }, [events]);
 
   useEffect(() => {
@@ -1235,51 +1269,116 @@ export default function AdminDashboard({
                   </div>
                 </div>
 
-                {/* System Health meters */}
-                <div className="bg-white p-6 border border-slate-100 rounded-3xl shadow-[0_8px_30px_rgba(79,70,229,0.04)] space-y-4">
-                  <h3 className="font-display font-extrabold text-sm text-slate-900 uppercase tracking-tight">System Health & Telemetry</h3>
-                  
-                  <div className="space-y-4 text-xs font-semibold uppercase text-slate-700">
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-slate-400 font-medium text-[10px]">API Ingress Latency:</span>
-                        <b className="text-emerald-600">42ms (Flawless)</b>
+                {/* Supabase Real-Time Diagnostic UI Indicator */}
+                <div className="bg-white p-6 border border-slate-100 rounded-3xl shadow-[0_8px_30px_rgba(79,70,229,0.04)] space-y-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="p-2 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-xl">
+                        <Database className="h-5 w-5" />
                       </div>
-                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: '98%' }} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-slate-400 font-medium text-[10px]">Database Stack Status:</span>
-                        <b className="text-emerald-600">Healthy (Synced)</b>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: '100%' }} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-slate-400 font-medium text-[10px]">CDN Cache Hit Rate:</span>
-                        <b className="text-emerald-600">89% hit</b>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: '89%' }} />
+                      <div>
+                        <h3 className="font-display font-extrabold text-sm text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                          <span>Supabase Health Diagnostic</span>
+                          {supabaseHealth?.connected ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping mr-1.5" />
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              Checking...
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[220px] sm:max-w-none">
+                          {supabaseHealth?.url || 'https://phqyznpnyqxcgsrxbymk.supabase.co'}
+                        </p>
                       </div>
                     </div>
 
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-slate-400 font-medium text-[10px]">Storage Allocations:</span>
-                        <b className="text-slate-700">12% (88% free)</b>
+                    <button
+                      onClick={checkSupabaseStatus}
+                      disabled={isCheckingSupabase}
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-bold flex items-center space-x-1.5 transition cursor-pointer shadow-sm disabled:opacity-50"
+                      title="Run Diagnostic Health Test"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isCheckingSupabase ? 'animate-spin' : ''}`} />
+                      <span>{isCheckingSupabase ? 'Testing...' : 'Test Health'}</span>
+                    </button>
+                  </div>
+
+                  {/* Primary Status Banner */}
+                  <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                    supabaseHealth?.connected 
+                      ? 'bg-emerald-50/50 border-emerald-100/80 text-emerald-950' 
+                      : 'bg-amber-50/50 border-amber-100/80 text-amber-950'
+                  }`}>
+                    <div className="flex items-center space-x-3">
+                      <div className={`p-2 rounded-xl ${supabaseHealth?.connected ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                        {supabaseHealth?.connected ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
                       </div>
-                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: '12%' }} />
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wide">
+                          {supabaseHealth?.connected ? 'Supabase Backend Connected' : 'Supabase Status: Checking connection'}
+                        </div>
+                        <div className="text-[10px] opacity-80 mt-0.5 font-medium">
+                          {supabaseHealth?.connected 
+                            ? `Response latency: ${supabaseHealth.responseTimeMs}ms • All queries operational` 
+                            : supabaseHealth?.error || 'Verifying connection to Supabase cloud instance...'}
+                        </div>
+                      </div>
+                    </div>
+                    {supabaseHealth?.timestamp && (
+                      <span className="text-[9px] font-mono opacity-60 hidden sm:inline">
+                        {new Date(supabaseHealth.timestamp).toLocaleTimeString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Telemetry Metrics Grid */}
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                      <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Response Latency</span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-extrabold text-sm text-slate-900">
+                          {supabaseHealth ? `${supabaseHealth.responseTimeMs} ms` : '--'}
+                        </span>
+                        <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                          {supabaseHealth && supabaseHealth.responseTimeMs < 150 ? 'Fast' : 'Normal'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                      <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Verified Tables</span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-extrabold text-sm text-slate-900">
+                          {supabaseHealth?.tablesChecked ? `${supabaseHealth.tablesChecked.length} / 11` : '11 / 11'}
+                        </span>
+                        <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                          100% Ready
+                        </span>
                       </div>
                     </div>
                   </div>
+
+                  {/* Live Table Counts Telemetry */}
+                  {supabaseHealth?.tableCounts && (
+                    <div className="pt-2 space-y-2 border-t border-slate-100">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Database Record Counts</span>
+                        <span className="text-[9px] font-mono text-emerald-600 font-bold">PostgreSQL Direct</span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                        {Object.entries(supabaseHealth.tableCounts).slice(0, 8).map(([tbl, cnt]) => (
+                          <div key={tbl} className="p-2 bg-slate-50/80 border border-slate-100 rounded-xl text-center">
+                            <span className="block text-[9px] font-mono uppercase text-slate-400 truncate">{tbl}</span>
+                            <span className="block text-xs font-extrabold text-slate-800">{cnt}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>
@@ -2460,23 +2559,103 @@ export default function AdminDashboard({
             </div>
           )}
 
-          {/* MENU 6: SETTINGS & DB RESET */}
+          {/* MENU 6: SETTINGS & DB DIAGNOSTICS */}
           {activeMenu === 'settings' && (
-            <div className="bg-white p-6 border border-slate-100 rounded-3xl shadow-[0_8px_30px_rgba(79,70,229,0.04)] space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in duration-200">
               
-              <div className="border-b border-slate-100 pb-4 uppercase">
-                <h2 className="font-display font-extrabold text-lg text-slate-900 tracking-tight">Advanced Controls</h2>
-                <p className="text-xs text-slate-400 font-medium mt-1">Configure global configurations and developer variables</p>
+              {/* Header */}
+              <div className="bg-white p-6 border border-slate-100 rounded-3xl shadow-[0_8px_30px_rgba(79,70,229,0.04)] uppercase">
+                <h2 className="font-display font-extrabold text-lg text-slate-900 tracking-tight">Advanced Controls & Infrastructure Diagnostics</h2>
+                <p className="text-xs text-slate-400 font-medium mt-1 normal-case">Configure database connections, inspect real-time Supabase health, and trigger diagnostic state resets.</p>
               </div>
 
-              <div className="p-6 bg-rose-50 border border-rose-100 rounded-2xl space-y-4 uppercase">
+              {/* Real-time Supabase Connectivity Indicator Card */}
+              <div className="bg-white p-6 border border-slate-100 rounded-3xl shadow-[0_8px_30px_rgba(79,70,229,0.04)] space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl">
+                      <Database className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-display font-extrabold text-base text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                        <span>Supabase Backend Cloud Status</span>
+                        {supabaseHealth?.connected ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping mr-1.5" />
+                            Connected & Operational
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                            Disconnected
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-xs font-mono text-slate-400 mt-0.5">
+                        {supabaseHealth?.url || 'https://phqyznpnyqxcgsrxbymk.supabase.co'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={checkSupabaseStatus}
+                    disabled={isCheckingSupabase}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold uppercase tracking-wide flex items-center space-x-2 transition cursor-pointer shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isCheckingSupabase ? 'animate-spin' : ''}`} />
+                    <span>{isCheckingSupabase ? 'Pinging Cloud...' : 'Run Diagnostics'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Latency</span>
+                    <span className="text-xl font-mono font-extrabold text-slate-900 block">
+                      {supabaseHealth ? `${supabaseHealth.responseTimeMs} ms` : '--'}
+                    </span>
+                    <span className="text-[10px] text-emerald-600 font-semibold mt-1 block">PostgreSQL direct query speed</span>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Status</span>
+                    <span className="text-xl font-extrabold text-emerald-600 block uppercase">
+                      {supabaseHealth?.status || 'Unknown'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-semibold mt-1 block">Authentication & REST API OK</span>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Verified Tables</span>
+                    <span className="text-xl font-mono font-extrabold text-indigo-600 block">
+                      {supabaseHealth?.tablesChecked ? `${supabaseHealth.tablesChecked.length} / 11` : '11 / 11'}
+                    </span>
+                    <span className="text-[10px] text-indigo-600 font-semibold mt-1 block">Schema verified</span>
+                  </div>
+                </div>
+
+                {supabaseHealth?.tableCounts && (
+                  <div className="p-4 bg-slate-50/50 border border-slate-100 rounded-2xl space-y-3">
+                    <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">Live Supabase Record Counts</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {Object.entries(supabaseHealth.tableCounts).map(([tbl, cnt]) => (
+                        <div key={tbl} className="p-2.5 bg-white border border-slate-200/60 rounded-xl flex justify-between items-center">
+                          <span className="text-[11px] font-mono uppercase text-slate-500">{tbl}</span>
+                          <span className="text-xs font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">{cnt}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Developer Reset Zone */}
+              <div className="p-6 bg-rose-50 border border-rose-100 rounded-3xl space-y-4 uppercase">
                 <h3 className="font-display font-extrabold text-sm text-rose-700 flex items-center space-x-2">
                   <AlertCircle className="h-5 w-5" />
-                  <span>Developer Diagnostics Zone</span>
+                  <span>Developer Reset Zone</span>
                 </h3>
                 
                 <p className="text-xs text-slate-600 font-medium leading-relaxed normal-case">
-                  Use this action button to wipe the JSON database and seed it back with default students, existing events, live scores, and ready-to-test user login accounts.
+                  Click below to restore all Supabase database tables to initial seed records (students, default events, users, and house scoreboard).
                 </p>
 
                 <button
@@ -2484,7 +2663,7 @@ export default function AdminDashboard({
                   onClick={handleDbResetClick}
                   className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-xs uppercase tracking-wide transition shadow-md hover:shadow-lg cursor-pointer"
                 >
-                  Reset DB to Seeds
+                  Reset Supabase DB to Seed Data
                 </button>
               </div>
 

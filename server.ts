@@ -9,7 +9,7 @@ import {
   ScoreboardTeam, ScoreHistory
 } from './src/types';
 import {
-  loadDatabaseFromSupabase, resetSupabaseToDefaultSeeds, checkSupabaseHealth,
+  loadDatabaseFromSupabase, resetSupabaseToDefaultSeeds, checkSupabaseHealth, getDefaultMemoryDb,
   getDbUsers, saveDbUser,
   getDbStudents, saveDbStudent, deleteDbStudent,
   getDbEvents, saveDbEvent, deleteDbEvent,
@@ -36,6 +36,59 @@ const PORT = 3000;
 // High body limits to allow base64 image uploads (for profile photo, gallery upload)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+let isDbLoaded = false;
+let dbInitPromise: Promise<void> | null = null;
+
+export async function ensureDbLoaded() {
+  if (!isDbLoaded) {
+    if (!dbInitPromise) {
+      dbInitPromise = (async () => {
+        try {
+          db = await loadDatabaseFromSQLite();
+        } catch (err) {
+          console.error("Error loading database from Supabase/SQLite:", err);
+          db = getDefaultMemoryDb();
+        }
+        if (!db) db = getDefaultMemoryDb();
+        const def = getDefaultMemoryDb();
+        if (!db.users || db.users.length === 0) db.users = def.users;
+        if (!db.students) db.students = [];
+        if (!db.events || db.events.length === 0) db.events = def.events;
+        if (!db.registrations) db.registrations = [];
+        if (!db.results) db.results = [];
+        if (!db.teams) db.teams = [];
+        if (!db.certificates) db.certificates = [];
+        if (!db.notifications) db.notifications = [];
+        if (!db.announcements || db.announcements.length === 0) db.announcements = def.announcements;
+        if (!db.gallery) db.gallery = [];
+        if (!db.scoreboard || db.scoreboard.length === 0) db.scoreboard = def.scoreboard;
+        if (!db.individualRankings) db.individualRankings = [];
+        if (!db.recentWinners) db.recentWinners = [];
+        if (!db.groups || db.groups.length === 0) db.groups = def.groups;
+        if (!db.scoreboardTeams || db.scoreboardTeams.length === 0) db.scoreboardTeams = def.scoreboardTeams;
+        if (!db.scoreHistory || db.scoreHistory.length === 0) db.scoreHistory = def.scoreHistory;
+        if (!db.assignedStudentIds) {
+          db.assignedStudentIds = db.students.map(s => s.studentId).filter(Boolean);
+        }
+        if (!db.statsOverrides) db.statsOverrides = {};
+        isDbLoaded = true;
+      })();
+    }
+    await dbInitPromise;
+  }
+}
+
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    try {
+      await ensureDbLoaded();
+    } catch (err) {
+      console.error('Error ensuring DB loaded:', err);
+    }
+  }
+  next();
+});
 
 // DB File setup
 const DB_DIR = path.join(process.cwd(), 'data');
@@ -268,11 +321,44 @@ let db: DatabaseSchema = {
 async function loadDatabaseFromSQLite(): Promise<DatabaseSchema> {
   try {
     const loadedDb = await loadDatabaseFromSupabase();
+    const def = getDefaultMemoryDb();
+
+    if (!loadedDb.users || loadedDb.users.length === 0) {
+      loadedDb.users = def.users;
+    } else {
+      for (const defU of def.users) {
+        if (!loadedDb.users.some((u: any) => u.email.toLowerCase() === defU.email.toLowerCase() || u.id === defU.id)) {
+          loadedDb.users.push(defU);
+        }
+      }
+    }
+
+    if (!loadedDb.events || loadedDb.events.length === 0) loadedDb.events = def.events;
+    if (!loadedDb.announcements || loadedDb.announcements.length === 0) loadedDb.announcements = def.announcements;
+    if (!loadedDb.scoreboard || loadedDb.scoreboard.length === 0) loadedDb.scoreboard = def.scoreboard;
+    if (!loadedDb.groups || loadedDb.groups.length === 0) loadedDb.groups = def.groups;
+    if (!loadedDb.scoreboardTeams || loadedDb.scoreboardTeams.length === 0) loadedDb.scoreboardTeams = def.scoreboardTeams;
+    if (!loadedDb.scoreHistory || loadedDb.scoreHistory.length === 0) loadedDb.scoreHistory = def.scoreHistory;
+
+    if (!loadedDb.students) loadedDb.students = [];
+    if (!loadedDb.registrations) loadedDb.registrations = [];
+    if (!loadedDb.results) loadedDb.results = [];
+    if (!loadedDb.teams) loadedDb.teams = [];
+    if (!loadedDb.certificates) loadedDb.certificates = [];
+    if (!loadedDb.notifications) loadedDb.notifications = [];
+    if (!loadedDb.gallery) loadedDb.gallery = [];
+    if (!loadedDb.individualRankings) loadedDb.individualRankings = [];
+    if (!loadedDb.recentWinners) loadedDb.recentWinners = [];
+    if (!loadedDb.assignedStudentIds) {
+      loadedDb.assignedStudentIds = loadedDb.students.map((s: any) => s.studentId).filter(Boolean);
+    }
+    if (!loadedDb.statsOverrides) loadedDb.statsOverrides = {};
+
     console.log("Successfully loaded database from Supabase!");
     return loadedDb;
   } catch (err) {
     console.error("Failed to load Supabase database, falling back to default memory initialization:", err);
-    return db;
+    return getDefaultMemoryDb();
   }
 }
 
@@ -1922,35 +2008,6 @@ app.get('/api/admin/supabase-status', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
-});
-
-let isDbLoaded = false;
-let dbInitPromise: Promise<void> | null = null;
-
-export async function ensureDbLoaded() {
-  if (!isDbLoaded) {
-    if (!dbInitPromise) {
-      dbInitPromise = (async () => {
-        db = await loadDatabaseFromSQLite();
-        if (!db.assignedStudentIds) {
-          db.assignedStudentIds = db.students ? db.students.map(s => s.studentId).filter(Boolean) : [];
-        }
-        isDbLoaded = true;
-      })();
-    }
-    await dbInitPromise;
-  }
-}
-
-app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api')) {
-    try {
-      await ensureDbLoaded();
-    } catch (err) {
-      console.error('Error ensuring DB loaded:', err);
-    }
-  }
-  next();
 });
 
 // Vite & Static file handler setup

@@ -31,7 +31,7 @@ export function getSupabase(): SupabaseClient | null {
 let inMemoryDb: any = null;
 
 // Default Seed Data
-export function getDefaultMemoryDb() {
+export function getDefaultMemoryDb(): any {
   return {
     users: [
       { id: 'u-admin', email: 'admin@fest.com', password: 'admin123', role: 'admin', createdAt: new Date().toISOString() },
